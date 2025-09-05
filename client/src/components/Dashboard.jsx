@@ -5,33 +5,68 @@ const baseURI = import.meta.env.VITE_API_BASE_URL;
 
 const AdminDashboard = () => {
   const [clientCount, setClientCount] = useState(0);
+  const [vehiculeCount, setVehiculeCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchClientCount = async () => {
+    const fetchDashboardData = async () => {
       try {
-        const response = await fetch(baseURI + 'api/clients/count', {
+        // Récupérer le nombre de clients
+        const clientResponse = await fetch(baseURI + 'api/clients/count', {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
           },
           credentials: 'include'
         });
-        if (response.ok) {
-          const data = await response.json();
-          setClientCount(data.count);
+
+        // Récupérer le nombre de véhicules
+        const vehiculeResponse = await fetch(baseURI + 'api/vehicules/count', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include'
+        });
+
+        if (clientResponse.ok && vehiculeResponse.ok) {
+          const clientData = await clientResponse.json();
+          const vehiculeData = await vehiculeResponse.json();
+          
+          setClientCount(clientData.count);
+          setVehiculeCount(vehiculeData.count);
         } else {
-          alert('Erreur lors de la récupération du nombre de clients');
-          navigate('/')
+          alert('Erreur lors de la récupération des données');
+          navigate('/');
         }
       } catch (error) {
+        console.error('Erreur réseau:', error);
         alert('Erreur réseau');
-        navigate('/')
+        navigate('/');
+      } finally {
+        setLoading(false);
       }
     };
 
-    fetchClientCount();
-  }, []);
+    fetchDashboardData();
+  }, [navigate]);
+
+  const handleGestionVehicules = () => {
+    navigate('/dashboard/vehicules');
+  };
+
+  const handleGestionClients = () => {
+    navigate('/dashboard/clients'); // Route à créer si besoin
+  };
+
+  if (loading) {
+    return (
+      <div className="dashboard-container">
+        <div className="loading">Chargement des données...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container">
@@ -47,9 +82,9 @@ const AdminDashboard = () => {
         </div>
         
         <div className="stat-card">
-          <h3>Activité récente</h3>
-          <div className="stat-value">24h</div>
-          <div className="stat-description">Dernière connexion</div>
+          <h3>Véhicules enregistrés</h3>
+          <div className="stat-value">{vehiculeCount}</div>
+          <div className="stat-description">Nombre total de véhicules dans la base</div>
         </div>
         
         <div className="stat-card">
@@ -60,8 +95,18 @@ const AdminDashboard = () => {
       </div>
       
       <div className="dashboard-actions">
-        <button className="action-button" disabled>Gérer les clients</button>
-        <button className="action-button" disabled>Gérer les Véhicules</button>
+        <button 
+          className="action-button" 
+          onClick={handleGestionClients}
+        >
+          Gérer les clients
+        </button>
+        <button 
+          className="action-button" 
+          onClick={handleGestionVehicules}
+        >
+          Gérer les Véhicules
+        </button>
         <button className="action-button" disabled>Rapports</button>
       </div>
     </div>

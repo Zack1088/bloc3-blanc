@@ -49,15 +49,3 @@ INSERT INTO vehicules (plaque_immatriculation, marque, modele, annee, client_id)
 ('UV-678-WX', 'Volkswagen', 'Golf', 2019, NULL),
 ('YZ-901-AB', 'Ford', 'Focus', 2020, NULL);
 
--- Vérification des données insérées
-SELECT 
-    v.id,
-    v.plaque_immatriculation,
-    v.marque,
-    v.modele,
-    v.annee,
-    CONCAT(u.firstname, ' ', u.lastname) AS client_nom,
-    v.created_at
-FROM vehicules v
-LEFT JOIN users u ON v.client_id = u.id
-ORDER BY v.id;

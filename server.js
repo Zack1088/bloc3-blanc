@@ -172,6 +172,319 @@ app.get('/api/clients', (req, _res, next) => {
   });
 });
 
+// ========================================
+// ROUTES VEHICULES - API ENDPOINTS
+// ========================================
+
+// 1. GET /api/vehicules - Lister tous les véhicules (Admin seulement)
+app.get('/api/vehicules', (req, _res, next) => {
+  req.requiredroles = ["admin"];
+  next();
+}, verifyTokenAndRole, (req, res) => {
+  const sql = `
+    SELECT 
+      v.id,
+      v.plaque_immatriculation,
+      v.marque,
+      v.modele,
+      v.annee,
+      v.client_id,
+      CONCAT(u.firstname, ' ', u.lastname) AS client_nom,
+      u.email AS client_email,
+      v.created_at,
+      v.updated_at
+    FROM vehicules v
+    LEFT JOIN users u ON v.client_id = u.id
+    ORDER BY v.id DESC
+  `;
+  
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error(err);
+      res.status(500).send('Server error');
+      return;
+    }
+    res.status(200).json(results);
+  });
+});
+
+// 2. GET /api/vehicules/count - Compter le nombre de véhicules (Admin seulement)
+app.get('/api/vehicules/count', (req, _res, next) => {
+  req.requiredroles = ["admin"];
+  next();
+}, verifyTokenAndRole, (req, res) => {
+  const sql = 'SELECT COUNT(*) AS count FROM vehicules';
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error(err);
+      res.status(500).send('Server error');
+      return;
+    }
+    res.status(200).json(results[0]);
+  });
+});
+
+// 3. GET /api/vehicules/:id - Obtenir un véhicule spécifique
+app.get('/api/vehicules/:id', (req, _res, next) => {
+  req.requiredroles = ["admin", "client"];
+  next();
+}, verifyTokenAndRole, (req, res) => {
+  const vehiculeId = req.params.id;
+  
+  const sql = `
+    SELECT 
+      v.id,
+      v.plaque_immatriculation,
+      v.marque,
+      v.modele,
+      v.annee,
+      v.client_id,
+      CONCAT(u.firstname, ' ', u.lastname) AS client_nom,
+      u.email AS client_email,
+      v.created_at,
+      v.updated_at
+    FROM vehicules v
+    LEFT JOIN users u ON v.client_id = u.id
+    WHERE v.id = ?
+  `;
+  
+  db.query(sql, [vehiculeId], (err, results) => {
+    if (err) {
+      console.error(err);
+      res.status(500).send('Server error');
+      return;
+    }
+    
+    if (results.length === 0) {
+      res.status(404).send('Véhicule non trouvé');
+      return;
+    }
+    
+    res.status(200).json(results[0]);
+  });
+});
+
+// 4. GET /api/vehicules/client/:clientId - Obtenir les véhicules d'un client spécifique
+app.get('/api/vehicules/client/:clientId', (req, _res, next) => {
+  req.requiredroles = ["admin", "client"];
+  next();
+}, verifyTokenAndRole, (req, res) => {
+  const clientId = req.params.clientId;
+  
+  const sql = `
+    SELECT 
+      v.id,
+      v.plaque_immatriculation,
+      v.marque,
+      v.modele,
+      v.annee,
+      v.client_id,
+      v.created_at,
+      v.updated_at
+    FROM vehicules v
+    WHERE v.client_id = ?
+    ORDER BY v.id DESC
+  `;
+  
+  db.query(sql, [clientId], (err, results) => {
+    if (err) {
+      console.error(err);
+      res.status(500).send('Server error');
+      return;
+    }
+    res.status(200).json(results);
+  });
+});
+
+// 5. POST /api/vehicules - Ajouter un nouveau véhicule (Admin seulement + CSRF)
+app.post('/api/vehicules', verifyCSRFToken, (req, _res, next) => {
+  req.requiredroles = ["admin"];
+  next();
+}, verifyTokenAndRole, (req, res) => {
+  const { plaque_immatriculation, marque, modele, annee, client_id } = req.body;
+  
+  // Validation des données
+  if (!plaque_immatriculation || !marque || !modele) {
+    res.status(400).send('Plaque d\'immatriculation, marque et modèle sont obligatoires');
+    return;
+  }
+  
+  // Vérifier si la plaque existe déjà
+  const checkSql = 'SELECT id FROM vehicules WHERE plaque_immatriculation = ?';
+  db.query(checkSql, [plaque_immatriculation], (err, existing) => {
+    if (err) {
+      console.error(err);
+      res.status(500).send('Server error');
+      return;
+    }
+    
+    if (existing.length > 0) {
+      res.status(409).send('Cette plaque d\'immatriculation existe déjà');
+      return;
+    }
+    
+    // Si client_id est fourni, vérifier qu'il existe
+    if (client_id) {
+      const clientCheckSql = 'SELECT id FROM users WHERE id = ? AND role = "client"';
+      db.query(clientCheckSql, [client_id], (err, clientExists) => {
+        if (err) {
+          console.error(err);
+          res.status(500).send('Server error');
+          return;
+        }
+        
+        if (clientExists.length === 0) {
+          res.status(404).send('Client non trouvé');
+          return;
+        }
+        
+        // Insérer le véhicule
+        insertVehicule();
+      });
+    } else {
+      // Insérer le véhicule sans client
+      insertVehicule();
+    }
+    
+    function insertVehicule() {
+      const sql = 'INSERT INTO vehicules (plaque_immatriculation, marque, modele, annee, client_id) VALUES (?, ?, ?, ?, ?)';
+      const values = [plaque_immatriculation, marque, modele, annee || null, client_id || null];
+      
+      db.query(sql, values, (err, result) => {
+        if (err) {
+          console.error(err);
+          res.status(500).send('Server error');
+          return;
+        }
+        res.status(201).json({
+          message: 'Véhicule ajouté avec succès',
+          vehiculeId: result.insertId
+        });
+      });
+    }
+  });
+});
+
+// 6. PUT /api/vehicules/:id - Modifier un véhicule existant (Admin seulement + CSRF)
+app.put('/api/vehicules/:id', verifyCSRFToken, (req, _res, next) => {
+  req.requiredroles = ["admin"];
+  next();
+}, verifyTokenAndRole, (req, res) => {
+  const vehiculeId = req.params.id;
+  const { plaque_immatriculation, marque, modele, annee, client_id } = req.body;
+  
+  // Validation des données
+  if (!plaque_immatriculation || !marque || !modele) {
+    res.status(400).send('Plaque d\'immatriculation, marque et modèle sont obligatoires');
+    return;
+  }
+  
+  // Vérifier si le véhicule existe
+  const vehiculeCheckSql = 'SELECT id FROM vehicules WHERE id = ?';
+  db.query(vehiculeCheckSql, [vehiculeId], (err, vehiculeExists) => {
+    if (err) {
+      console.error(err);
+      res.status(500).send('Server error');
+      return;
+    }
+    
+    if (vehiculeExists.length === 0) {
+      res.status(404).send('Véhicule non trouvé');
+      return;
+    }
+    
+    // Vérifier si la plaque existe déjà pour un autre véhicule
+    const checkSql = 'SELECT id FROM vehicules WHERE plaque_immatriculation = ? AND id != ?';
+    db.query(checkSql, [plaque_immatriculation, vehiculeId], (err, existing) => {
+      if (err) {
+        console.error(err);
+        res.status(500).send('Server error');
+        return;
+      }
+      
+      if (existing.length > 0) {
+        res.status(409).send('Cette plaque d\'immatriculation existe déjà');
+        return;
+      }
+      
+      // Si client_id est fourni, vérifier qu'il existe
+      if (client_id) {
+        const clientCheckSql = 'SELECT id FROM users WHERE id = ? AND role = "client"';
+        db.query(clientCheckSql, [client_id], (err, clientExists) => {
+          if (err) {
+            console.error(err);
+            res.status(500).send('Server error');
+            return;
+          }
+          
+          if (clientExists.length === 0) {
+            res.status(404).send('Client non trouvé');
+            return;
+          }
+          
+          // Mettre à jour le véhicule
+          updateVehicule();
+        });
+      } else {
+        // Mettre à jour le véhicule sans client
+        updateVehicule();
+      }
+      
+      function updateVehicule() {
+        const sql = 'UPDATE vehicules SET plaque_immatriculation = ?, marque = ?, modele = ?, annee = ?, client_id = ? WHERE id = ?';
+        const values = [plaque_immatriculation, marque, modele, annee || null, client_id || null, vehiculeId];
+        
+        db.query(sql, values, (err, result) => {
+          if (err) {
+            console.error(err);
+            res.status(500).send('Server error');
+            return;
+          }
+          res.status(200).json({
+            message: 'Véhicule modifié avec succès'
+          });
+        });
+      }
+    });
+  });
+});
+
+// 7. DELETE /api/vehicules/:id - Supprimer un véhicule (Admin seulement + CSRF)
+app.delete('/api/vehicules/:id', verifyCSRFToken, (req, _res, next) => {
+  req.requiredroles = ["admin"];
+  next();
+}, verifyTokenAndRole, (req, res) => {
+  const vehiculeId = req.params.id;
+  
+  // Vérifier si le véhicule existe
+  const checkSql = 'SELECT id FROM vehicules WHERE id = ?';
+  db.query(checkSql, [vehiculeId], (err, results) => {
+    if (err) {
+      console.error(err);
+      res.status(500).send('Server error');
+      return;
+    }
+    
+    if (results.length === 0) {
+      res.status(404).send('Véhicule non trouvé');
+      return;
+    }
+    
+    // Supprimer le véhicule
+    const deleteSql = 'DELETE FROM vehicules WHERE id = ?';
+    db.query(deleteSql, [vehiculeId], (err, result) => {
+      if (err) {
+        console.error(err);
+        res.status(500).send('Server error');
+        return;
+      }
+      res.status(200).json({
+        message: 'Véhicule supprimé avec succès'
+      });
+    });
+  });
+});
+
 app.use(express.static(path.join(__dirname, "./client/dist")))
 app.get("*", (_, res) => {
     res.sendFile(

@@ -1,0 +1,23 @@
+erDiagram
+    users ||--o{ vehicules : "possède"
+    
+    users {
+        int id PK "Auto-increment, Primary Key"
+        varchar lastname "Nom de famille, NOT NULL"
+        varchar firstname "Prénom, NOT NULL"
+        varchar email "Email unique, NOT NULL"
+        varchar password "Mot de passe hashé, NOT NULL"
+        enum role "admin ou client, DEFAULT client"
+        timestamp created_at "Date de création, DEFAULT CURRENT_TIMESTAMP"
+    }
+    
+    vehicules {
+        int id PK "Auto-increment, Primary Key"
+        varchar plaque_immatriculation UK "Plaque unique, NOT NULL"
+        varchar marque "Marque du véhicule, NOT NULL"
+        varchar modele "Modèle du véhicule, NOT NULL"
+        int annee "Année de fabrication, NULL"
+        int client_id FK "Référence vers users.id, NULL"
+        timestamp created_at "Date de création, DEFAULT CURRENT_TIMESTAMP"
+        timestamp updated_at "Date de modification, ON UPDATE CURRENT_TIMESTAMP"
+    }
